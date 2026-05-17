@@ -283,7 +283,7 @@
 <!-- Pages -->
 <div id="page-home" class="page active">
   <div class="page-header">
-    <div class="page-title">ScanVault <span id="sync-status" style="font-size:12px;font-weight:400;color:var(--muted);margin-left:8px;transition:opacity 0.5s;"></span></div>
+    <div class="page-title">ScanVault</div>
     <div class="page-sub" id="home-count">0 products saved</div>
     <div class="search-wrap">
       <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -551,38 +551,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ── Supabase Config ────────────────────────────────────────────────────────
-const SUPABASE_URL = 'https://hhgtgpxzxgcwvdfwlpvx.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhoZ3RncHh6eGdjd3ZkZndscHZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5Njc1MjIsImV4cCI6MjA5NDU0MzUyMn0.-PuTs5BTutW5wlJkzCmp6CeU0FIjnBcWVeRa5MUar3Q';
-
-const db = {
-  async req(method, table, body, query = '') {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
-      method,
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal'
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err);
-    }
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
-  },
-  get: (table, query) => db.req('GET', table, null, query),
-  post: (table, body) => db.req('POST', table, body),
-  patch: (table, body, query) => db.req('PATCH', table, body, query),
-  delete: (table, query) => db.req('DELETE', table, null, query),
-};
-
 // ── State ──────────────────────────────────────────────────────────────────
-let products = [];
-let scanHistory = [];
+let products = JSON.parse(localStorage.getItem('sv_products') || '[]');
+let scanHistory = JSON.parse(localStorage.getItem('sv_history') || '[]');
 let currentScan = null;
 let currentTags = [];
 let filterTag = 'all';
@@ -590,170 +561,8 @@ let searchQuery = '';
 let scanner = null;
 let scannerStarted = false;
 let currentDetailId = null;
-let dbReady = false;
-
-// ── DB Init & Sync ─────────────────────────────────────────────────────────
-async function initDB() {
-  showSyncStatus('⏳ Connecting…');
-  try {
-    // Try to load from Supabase
-    const [prods, hist] = await Promise.all([
-      db.get('sv_products', '?order=saved_at.desc'),
-      db.get('sv_history', '?order=time.desc&limit=100')
-    ]);
-    products = (prods || []).map(dbToProduct);
-    scanHistory = (hist || []).map(dbToHistory);
-    dbReady = true;
-    showSyncStatus('☁️ Synced', 1800);
-  } catch(e) {
-    // Tables may not exist yet — create them then retry
-    try {
-      await createTables();
-      dbReady = true;
-      showSyncStatus('☁️ Ready', 1800);
-    } catch(e2) {
-      // Fall back to localStorage if DB completely unreachable
-      products = JSON.parse(localStorage.getItem('sv_products') || '[]');
-      scanHistory = JSON.parse(localStorage.getItem('sv_history') || '[]');
-      showSyncStatus('⚠️ Offline mode', 3000);
-    }
-  }
-  renderProducts();
-}
-
-async function createTables() {
-  // Use Supabase REST — tables must be created via SQL editor
-  // Show a helpful message to the user
-  showToast('Set up DB tables in Supabase — see console', 'error');
-  console.warn(`
-Run this SQL in Supabase → SQL Editor:
-
-create table if not exists sv_products (
-  id text primary key,
-  code text,
-  type text,
-  name text,
-  category text,
-  brand text,
-  sku text,
-  description text,
-  tags text[],
-  retail numeric,
-  wholesale numeric,
-  stock integer,
-  photo text,
-  saved_at bigint,
-  updated_at bigint
-);
-
-create table if not exists sv_history (
-  id text primary key,
-  code text,
-  type text,
-  time bigint
-);
-  `);
-  throw new Error('Tables not ready');
-}
-
-function showSyncStatus(msg, hideAfter = 0) {
-  let el = document.getElementById('sync-status');
-  if (!el) return;
-  el.textContent = msg;
-  el.style.opacity = '1';
-  if (hideAfter) setTimeout(() => { el.style.opacity = '0'; }, hideAfter);
-}
-
-// Map DB row → app object
-function dbToProduct(row) {
-  return {
-    id: row.id,
-    code: row.code,
-    type: row.type,
-    name: row.name,
-    category: row.category || '',
-    brand: row.brand || '',
-    sku: row.sku || '',
-    desc: row.description || '',
-    tags: row.tags || [],
-    retail: row.retail,
-    wholesale: row.wholesale,
-    stock: row.stock,
-    photo: row.photo,
-    savedAt: row.saved_at,
-    updatedAt: row.updated_at
-  };
-}
-function dbToHistory(row) {
-  return { id: row.id, code: row.code, type: row.type, time: row.time };
-}
-// Map app object → DB row
-function productToDB(p) {
-  return {
-    id: p.id,
-    code: p.code,
-    type: p.type,
-    name: p.name,
-    category: p.category || null,
-    brand: p.brand || null,
-    sku: p.sku || null,
-    description: p.desc || null,
-    tags: p.tags || [],
-    retail: p.retail || null,
-    wholesale: p.wholesale || null,
-    stock: p.stock != null ? p.stock : null,
-    photo: p.photo || null,
-    saved_at: p.savedAt,
-    updated_at: p.updatedAt || null
-  };
-}
 
 // ── Persist ────────────────────────────────────────────────────────────────
-async function saveProduct_DB(product) {
-  localStorage.setItem('sv_products', JSON.stringify(products));
-  if (!dbReady) return;
-  showSyncStatus('⏫ Saving…');
-  try {
-    await db.post('sv_products', productToDB(product));
-    showSyncStatus('✅ Saved', 1800);
-  } catch(e) {
-    showSyncStatus('⚠️ Save failed', 3000);
-  }
-}
-
-async function updateProduct_DB(product) {
-  localStorage.setItem('sv_products', JSON.stringify(products));
-  if (!dbReady) return;
-  showSyncStatus('⏫ Updating…');
-  try {
-    await db.patch('sv_products', productToDB(product), `?id=eq.${product.id}`);
-    showSyncStatus('✅ Updated', 1800);
-  } catch(e) {
-    showSyncStatus('⚠️ Update failed', 3000);
-  }
-}
-
-async function deleteProduct_DB(id) {
-  localStorage.setItem('sv_products', JSON.stringify(products));
-  if (!dbReady) return;
-  showSyncStatus('🗑️ Deleting…');
-  try {
-    await db.delete('sv_products', `?id=eq.${id}`);
-    showSyncStatus('✅ Deleted', 1800);
-  } catch(e) {
-    showSyncStatus('⚠️ Delete failed', 3000);
-  }
-}
-
-async function saveHistory_DB(entry) {
-  localStorage.setItem('sv_history', JSON.stringify(scanHistory));
-  if (!dbReady) return;
-  try {
-    await db.post('sv_history', { id: entry.id, code: entry.code, type: entry.type, time: entry.time });
-  } catch(e) { /* silent */ }
-}
-
-// Legacy save() for compatibility
 function save() {
   localStorage.setItem('sv_products', JSON.stringify(products));
   localStorage.setItem('sv_history', JSON.stringify(scanHistory));
@@ -785,32 +594,48 @@ function showPage(name) {
 // ── Scanner ────────────────────────────────────────────────────────────────
 function startScanner() {
   if (scannerStarted) return;
-  document.getElementById('scan-status').textContent = 'Starting camera…';
+  const statusEl = document.getElementById('scan-status');
+  statusEl.innerHTML = 'Starting camera…';
   document.getElementById('scan-result-box').style.display = 'none';
 
+  if (scanner) { try { scanner.clear(); } catch(_){} scanner = null; }
+  document.getElementById('reader').innerHTML = '';
+
   scanner = new Html5Qrcode('reader');
-  Html5Qrcode.getCameras().then(cameras => {
-    if (!cameras.length) { document.getElementById('scan-status').textContent = 'No camera found.'; return; }
-    const cam = cameras.find(c => c.label.toLowerCase().includes('back')) || cameras[cameras.length - 1];
-    scanner.start(
-      cam.id,
-      { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
-      onScanSuccess,
-      () => {}
-    ).then(() => {
-      scannerStarted = true;
-      document.getElementById('scan-status').textContent = 'Align code within the frame';
-    }).catch(e => {
-      document.getElementById('scan-status').textContent = 'Camera error: ' + e;
-    });
-  }).catch(e => {
-    document.getElementById('scan-status').textContent = 'Cannot access camera. Allow permission and retry.';
+  scanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
+    onScanSuccess,
+    () => {}
+  ).then(() => {
+    scannerStarted = true;
+    statusEl.innerHTML = 'Align code within the frame';
+  }).catch(err => {
+    const s = String(err).toLowerCase();
+    let msg = '⚠️ Camera error. Please try again.';
+    if (s.includes('notallowed') || s.includes('permission') || s.includes('denied')) {
+      msg = '🔒 Camera permission denied.<br><small>Allow camera in browser settings, then tap Retry.</small>';
+    } else if (s.includes('notfound') || s.includes('devicenotfound')) {
+      msg = '📷 No camera found on this device.';
+    } else if (s.includes('https') || s.includes('secure')) {
+      msg = '🔒 Camera requires a secure HTTPS connection.';
+    }
+    statusEl.innerHTML = msg + '<br><button class="btn btn-secondary" style="margin-top:12px;font-size:13px;" onclick="retryScan()">↺ Retry</button>';
+    try { scanner.clear(); } catch(_){} scanner = null;
   });
+}
+
+function retryScan() {
+  scannerStarted = false;
+  scanner = null;
+  startScanner();
 }
 
 function stopScanner() {
   if (scanner && scannerStarted) {
-    scanner.stop().catch(() => {});
+    scanner.stop()
+      .then(() => { try { scanner.clear(); } catch(_){} scanner = null; })
+      .catch(() => { try { scanner.clear(); } catch(_){} scanner = null; });
     scannerStarted = false;
   }
 }
@@ -825,10 +650,9 @@ function onScanSuccess(code, result) {
   document.getElementById('scan-status').textContent = 'Code detected!';
 
   // Add to history
-  const entry = { id: Date.now().toString(), code, type, time: Date.now() };
-  scanHistory.unshift(entry);
+  scanHistory.unshift({ code, type, time: Date.now() });
   if (scanHistory.length > 100) scanHistory.pop();
-  saveHistory_DB(entry);
+  save();
 
   // Vibrate
   if (navigator.vibrate) navigator.vibrate(80);
@@ -933,11 +757,11 @@ async function saveProduct() {
     savedAt: Date.now()
   };
   products.unshift(product);
-  await saveProduct_DB(product);
+  save();
   closeModal('save-modal');
   showToast('Product saved!', 'success');
   resetScan();
-  renderProducts();
+}
 
 // ── Products ───────────────────────────────────────────────────────────────
 function getAllTags() {
@@ -1045,7 +869,7 @@ function openDetail(id) {
 function deleteProduct(id) {
   if (!confirm('Delete this product?')) return;
   products = products.filter(p => p.id !== id);
-  deleteProduct_DB(id);
+  save();
   closeModal('detail-modal');
   renderProducts();
   showToast('Product deleted');
@@ -1171,6 +995,7 @@ async function submitRegister() {
   const stock = stockVal !== '' ? parseInt(stockVal) : null;
 
   if (regEditId) {
+    // Edit existing
     const idx = products.findIndex(p => p.id === regEditId);
     if (idx === -1) return;
     const existing = products[idx];
@@ -1189,11 +1014,12 @@ async function submitRegister() {
       photo: photoData || existing.photo,
       updatedAt: Date.now()
     };
-    await updateProduct_DB(products[idx]);
+    save();
     closeRegisterModal();
     renderProducts();
     showToast('Product updated!', 'success');
   } else {
+    // New product
     const product = {
       id: Date.now().toString(),
       code: document.getElementById('reg-code').value.trim() || '—',
@@ -1211,7 +1037,7 @@ async function submitRegister() {
       savedAt: Date.now()
     };
     products.unshift(product);
-    await saveProduct_DB(product);
+    save();
     closeRegisterModal();
     renderProducts();
     showToast('Product registered!', 'success');
@@ -1282,30 +1108,42 @@ document.getElementById('reg-photo').addEventListener('change', function() {
 function startInlineScanner() {
   if (inlineScannerStarted) return;
   document.getElementById('inline-scanner-wrap').style.display = 'block';
+
+  if (inlineScanner) { try { inlineScanner.clear(); } catch(_){} inlineScanner = null; }
+  document.getElementById('inline-reader').innerHTML = '';
+
   inlineScanner = new Html5Qrcode('inline-reader');
-  Html5Qrcode.getCameras().then(cameras => {
-    if (!cameras.length) return;
-    const cam = cameras.find(c => c.label.toLowerCase().includes('back')) || cameras[cameras.length - 1];
-    inlineScanner.start(
-      cam.id,
-      { fps: 10, qrbox: { width: 160, height: 160 } },
-      (code) => {
-        document.getElementById('reg-code').value = code;
-        stopInlineScanner();
-        showToast('Code captured!', 'success');
-      },
-      () => {}
-    ).then(() => { inlineScannerStarted = true; }).catch(() => {});
+  inlineScanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 160, height: 160 } },
+    (code) => {
+      document.getElementById('reg-code').value = code;
+      stopInlineScanner();
+      showToast('Code captured!', 'success');
+    },
+    () => {}
+  ).then(() => {
+    inlineScannerStarted = true;
+  }).catch(err => {
+    const s = String(err).toLowerCase();
+    const msg = (s.includes('notallowed') || s.includes('permission') || s.includes('denied'))
+      ? 'Camera permission denied. Allow access in browser settings.'
+      : 'Could not start camera. Please try again.';
+    showToast(msg, 'error');
+    document.getElementById('inline-scanner-wrap').style.display = 'none';
+    try { inlineScanner.clear(); } catch(_){} inlineScanner = null;
   });
 }
 
 function stopInlineScanner() {
-  if (inlineScanner && inlineScannerStarted) {
-    inlineScanner.stop().catch(() => {});
-    inlineScannerStarted = false;
-  }
   const wrap = document.getElementById('inline-scanner-wrap');
   if (wrap) wrap.style.display = 'none';
+  if (inlineScanner && inlineScannerStarted) {
+    inlineScanner.stop()
+      .then(() => { try { inlineScanner.clear(); } catch(_){} inlineScanner = null; })
+      .catch(() => { try { inlineScanner.clear(); } catch(_){} inlineScanner = null; });
+    inlineScannerStarted = false;
+  }
 }
 
 // Update detail modal to show extra fields
@@ -1342,9 +1180,6 @@ document.querySelectorAll('.modal-backdrop').forEach(bd => {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-
-// ── Boot ───────────────────────────────────────────────────────────────────
-initDB();
 </script>
 </body>
 </html>
