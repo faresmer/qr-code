@@ -283,7 +283,7 @@
 <!-- Pages -->
 <div id="page-home" class="page active">
   <div class="page-header">
-    <div class="page-title">ScanVault</div>
+    <div class="page-title">ScanVault <span id="sync-badge" style="font-size:12px;font-weight:400;color:var(--muted);margin-left:6px;transition:opacity 0.5s;"></span></div>
     <div class="page-sub" id="home-count">0 products saved</div>
     <div class="search-wrap">
       <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -551,9 +551,36 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ── Google Sheets Backend ──────────────────────────────────────────────────
+const GS_URL = 'https://script.google.com/macros/s/AKfycbzpm03vycxOuoOV8Hl0T7JPwyK6SesV4--0h2fZcjiz-m7bCo1JmHDLOAAlXdv9PURY/exec';
+
+async function gsGet(table) {
+  try {
+    const r = await fetch(`${GS_URL}?action=get&table=${table}`);
+    return await r.json();
+  } catch(e) { return []; }
+}
+
+async function gsPost(action, table, data) {
+  try {
+    await fetch(GS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action, table, data }),
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  } catch(e) {}
+}
+
+function syncBadge(msg, hide) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  el.textContent = msg; el.style.opacity = '1';
+  if (hide) setTimeout(() => el.style.opacity = '0', hide);
+}
+
 // ── State ──────────────────────────────────────────────────────────────────
-let products = JSON.parse(localStorage.getItem('sv_products') || '[]');
-let scanHistory = JSON.parse(localStorage.getItem('sv_history') || '[]');
+let products = [];
+let scanHistory = [];
 let currentScan = null;
 let currentTags = [];
 let filterTag = 'all';
@@ -561,6 +588,53 @@ let searchQuery = '';
 let scanner = null;
 let scannerStarted = false;
 let currentDetailId = null;
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+async function initApp() {
+  syncBadge('⏳ Loading…');
+  // Init sheet headers if empty
+  await gsPost('init', 'products', { headers: ['id','code','type','name','category','brand','sku','description','tags','retail','wholesale','stock','photo','savedAt','updatedAt'] });
+  await gsPost('init', 'history', { headers: ['id','code','type','time'] });
+
+  try {
+    const [prods, hist] = await Promise.all([gsGet('products'), gsGet('history')]);
+    products = (prods || []).filter(r => r.id).map(r => ({
+      id: r.id, code: r.code, type: r.type, name: r.name,
+      category: r.category || '', brand: r.brand || '', sku: r.sku || '',
+      desc: r.description || '',
+      tags: (() => { try { return JSON.parse(r.tags || '[]'); } catch(e) { return []; } })(),
+      retail: r.retail ? parseFloat(r.retail) : null,
+      wholesale: r.wholesale ? parseFloat(r.wholesale) : null,
+      stock: r.stock !== '' ? parseInt(r.stock) : null,
+      photo: r.photo || null,
+      savedAt: parseInt(r.savedAt) || Date.now(),
+      updatedAt: r.updatedAt ? parseInt(r.updatedAt) : null
+    })).sort((a,b) => b.savedAt - a.savedAt);
+    scanHistory = (hist || []).filter(r => r.id).map(r => ({
+      id: r.id, code: r.code, type: r.type, time: parseInt(r.time) || Date.now()
+    })).sort((a,b) => b.time - a.time);
+    syncBadge('☁️ Synced', 2000);
+  } catch(e) {
+    products = JSON.parse(localStorage.getItem('sv_products') || '[]');
+    scanHistory = JSON.parse(localStorage.getItem('sv_history') || '[]');
+    syncBadge('⚠️ Offline', 3000);
+  }
+  renderProducts();
+}
+
+function toRow(p) {
+  return {
+    id: p.id, code: p.code, type: p.type, name: p.name,
+    category: p.category || '', brand: p.brand || '', sku: p.sku || '',
+    description: p.desc || '',
+    tags: JSON.stringify(p.tags || []),
+    retail: p.retail != null ? p.retail : '',
+    wholesale: p.wholesale != null ? p.wholesale : '',
+    stock: p.stock != null ? p.stock : '',
+    photo: p.photo || '',
+    savedAt: p.savedAt, updatedAt: p.updatedAt || ''
+  };
+}
 
 // ── Persist ────────────────────────────────────────────────────────────────
 function save() {
@@ -597,40 +671,30 @@ function startScanner() {
   const statusEl = document.getElementById('scan-status');
   statusEl.innerHTML = 'Starting camera…';
   document.getElementById('scan-result-box').style.display = 'none';
-
   if (scanner) { try { scanner.clear(); } catch(_){} scanner = null; }
   document.getElementById('reader').innerHTML = '';
-
   scanner = new Html5Qrcode('reader');
   scanner.start(
     { facingMode: 'environment' },
     { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
-    onScanSuccess,
-    () => {}
+    onScanSuccess, () => {}
   ).then(() => {
     scannerStarted = true;
     statusEl.innerHTML = 'Align code within the frame';
   }).catch(err => {
     const s = String(err).toLowerCase();
     let msg = '⚠️ Camera error. Please try again.';
-    if (s.includes('notallowed') || s.includes('permission') || s.includes('denied')) {
+    if (s.includes('notallowed') || s.includes('permission') || s.includes('denied'))
       msg = '🔒 Camera permission denied.<br><small>Allow camera in browser settings, then tap Retry.</small>';
-    } else if (s.includes('notfound') || s.includes('devicenotfound')) {
+    else if (s.includes('notfound') || s.includes('devicenotfound'))
       msg = '📷 No camera found on this device.';
-    } else if (s.includes('https') || s.includes('secure')) {
+    else if (s.includes('https') || s.includes('secure'))
       msg = '🔒 Camera requires a secure HTTPS connection.';
-    }
     statusEl.innerHTML = msg + '<br><button class="btn btn-secondary" style="margin-top:12px;font-size:13px;" onclick="retryScan()">↺ Retry</button>';
     try { scanner.clear(); } catch(_){} scanner = null;
   });
 }
-
-function retryScan() {
-  scannerStarted = false;
-  scanner = null;
-  startScanner();
-}
-
+function retryScan() { scannerStarted = false; scanner = null; startScanner(); }
 function stopScanner() {
   if (scanner && scannerStarted) {
     scanner.stop()
@@ -650,9 +714,11 @@ function onScanSuccess(code, result) {
   document.getElementById('scan-status').textContent = 'Code detected!';
 
   // Add to history
-  scanHistory.unshift({ code, type, time: Date.now() });
+  const entry = { id: Date.now().toString(), code, type, time: Date.now() };
+  scanHistory.unshift(entry);
   if (scanHistory.length > 100) scanHistory.pop();
   save();
+  gsPost('upsert', 'history', entry);
 
   // Vibrate
   if (navigator.vibrate) navigator.vibrate(80);
@@ -748,19 +814,16 @@ async function saveProduct() {
     id: Date.now().toString(),
     code: currentScan,
     type: document.getElementById('modal-code-type').textContent,
-    name,
-    desc,
-    tags: [...currentTags],
-    retail,
-    wholesale,
-    photo: photoData,
-    savedAt: Date.now()
+    name, desc, tags: [...currentTags], retail, wholesale, photo: photoData, savedAt: Date.now()
   };
   products.unshift(product);
   save();
+  syncBadge('⏫ Saving…');
+  gsPost('upsert', 'products', toRow(product)).then(() => syncBadge('✅ Saved', 2000));
   closeModal('save-modal');
   showToast('Product saved!', 'success');
   resetScan();
+  renderProducts();
 }
 
 // ── Products ───────────────────────────────────────────────────────────────
@@ -870,6 +933,7 @@ function deleteProduct(id) {
   if (!confirm('Delete this product?')) return;
   products = products.filter(p => p.id !== id);
   save();
+  gsPost('delete', 'products', { id });
   closeModal('detail-modal');
   renderProducts();
   showToast('Product deleted');
@@ -995,52 +1059,38 @@ async function submitRegister() {
   const stock = stockVal !== '' ? parseInt(stockVal) : null;
 
   if (regEditId) {
-    // Edit existing
     const idx = products.findIndex(p => p.id === regEditId);
     if (idx === -1) return;
     const existing = products[idx];
     products[idx] = {
-      ...existing,
-      name,
+      ...existing, name,
       code: document.getElementById('reg-code').value.trim() || existing.code,
       category: document.getElementById('reg-category').value,
       brand: document.getElementById('reg-brand').value.trim(),
       sku: document.getElementById('reg-sku').value.trim(),
       desc: document.getElementById('reg-desc').value.trim(),
-      retail,
-      wholesale,
-      stock,
-      tags: [...regTags],
-      photo: photoData || existing.photo,
-      updatedAt: Date.now()
+      retail, wholesale, stock, tags: [...regTags],
+      photo: photoData || existing.photo, updatedAt: Date.now()
     };
     save();
-    closeRegisterModal();
-    renderProducts();
-    showToast('Product updated!', 'success');
+    gsPost('upsert', 'products', toRow(products[idx]));
+    closeRegisterModal(); renderProducts(); showToast('Product updated!', 'success');
   } else {
-    // New product
     const product = {
       id: Date.now().toString(),
       code: document.getElementById('reg-code').value.trim() || '—',
-      type: 'Manual',
-      name,
+      type: 'Manual', name,
       category: document.getElementById('reg-category').value,
       brand: document.getElementById('reg-brand').value.trim(),
       sku: document.getElementById('reg-sku').value.trim(),
       desc: document.getElementById('reg-desc').value.trim(),
-      retail,
-      wholesale,
-      stock,
-      tags: [...regTags],
-      photo: photoData,
-      savedAt: Date.now()
+      retail, wholesale, stock, tags: [...regTags], photo: photoData, savedAt: Date.now()
     };
     products.unshift(product);
     save();
-    closeRegisterModal();
-    renderProducts();
-    showToast('Product registered!', 'success');
+    syncBadge('⏫ Saving…');
+    gsPost('upsert', 'products', toRow(product)).then(() => syncBadge('✅ Saved', 2000));
+    closeRegisterModal(); renderProducts(); showToast('Product registered!', 'success');
   }
 }
 
@@ -1108,10 +1158,8 @@ document.getElementById('reg-photo').addEventListener('change', function() {
 function startInlineScanner() {
   if (inlineScannerStarted) return;
   document.getElementById('inline-scanner-wrap').style.display = 'block';
-
   if (inlineScanner) { try { inlineScanner.clear(); } catch(_){} inlineScanner = null; }
   document.getElementById('inline-reader').innerHTML = '';
-
   inlineScanner = new Html5Qrcode('inline-reader');
   inlineScanner.start(
     { facingMode: 'environment' },
@@ -1120,11 +1168,9 @@ function startInlineScanner() {
       document.getElementById('reg-code').value = code;
       stopInlineScanner();
       showToast('Code captured!', 'success');
-    },
-    () => {}
-  ).then(() => {
-    inlineScannerStarted = true;
-  }).catch(err => {
+    }, () => {}
+  ).then(() => { inlineScannerStarted = true; })
+  .catch(err => {
     const s = String(err).toLowerCase();
     const msg = (s.includes('notallowed') || s.includes('permission') || s.includes('denied'))
       ? 'Camera permission denied. Allow access in browser settings.'
@@ -1180,6 +1226,9 @@ document.querySelectorAll('.modal-backdrop').forEach(bd => {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+// Boot
+initApp();
 </script>
 </body>
 </html>
