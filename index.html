@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0f1117" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="ScanVault" />
+<title>ScanVault</title>
+<link rel="manifest" href="manifest.json" />
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.15);
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --success: #2ecc87;
+    --danger: #f7554f;
+    --text: #f0f2ff;
+    --muted: #8a8fa8;
+    --tag-bg: rgba(79,142,247,0.13);
+    --tag-text: #7ab0ff;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --font: 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100dvh; overflow-x: hidden; }
+
+  /* Nav */
+  nav {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(26,29,39,0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 0.5px solid var(--border2);
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+  }
+  .nav-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px 20px; border-radius: var(--radius-sm);
+    cursor: pointer; border: none; background: none;
+    font-size: 11px; color: var(--muted); transition: color 0.2s;
+  }
+  .nav-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  .nav-btn.active { color: var(--accent); }
+  .nav-scan-btn {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 20px rgba(79,142,247,0.4);
+    transform: translateY(-10px);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .nav-scan-btn:active { transform: translateY(-10px) scale(0.93); }
+  .nav-scan-btn svg { width: 26px; height: 26px; stroke: #fff; fill: none; stroke-width: 2; }
+
+  /* Pages */
+  .page { display: none; padding: 0 0 96px; min-height: 100dvh; }
+  .page.active { display: block; }
+
+  /* Header */
+  .page-header {
+    padding: 56px 20px 20px;
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(15,17,23,0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .page-sub { font-size: 14px; color: var(--muted); margin-top: 2px; }
+
+  /* Search */
+  .search-wrap { position: relative; margin-top: 14px; }
+  .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 2; }
+  .search-input {
+    width: 100%; padding: 11px 14px 11px 40px;
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text); font-size: 15px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--border2); }
+  .search-input::placeholder { color: var(--muted); }
+
+  /* Tags filter */
+  .tags-scroll { display: flex; gap: 8px; padding: 12px 20px; overflow-x: auto; scrollbar-width: none; }
+  .tags-scroll::-webkit-scrollbar { display: none; }
+  .tag-chip {
+    flex-shrink: 0; padding: 5px 13px; border-radius: 20px;
+    font-size: 12px; cursor: pointer; border: 0.5px solid var(--border2);
+    background: transparent; color: var(--muted); transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .tag-chip.active { background: var(--tag-bg); color: var(--tag-text); border-color: rgba(79,142,247,0.3); }
+
+  /* Product grid */
+  .products-grid { padding: 0 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .product-card {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius); padding: 14px; cursor: pointer;
+    transition: transform 0.15s, border-color 0.2s;
+    position: relative; overflow: hidden;
+  }
+  .product-card:active { transform: scale(0.97); }
+  .product-card:hover { border-color: var(--border2); }
+  .product-thumb {
+    width: 100%; aspect-ratio: 1; border-radius: 10px;
+    background: var(--surface2); object-fit: cover;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 10px; overflow: hidden;
+  }
+  .product-thumb svg { width: 32px; height: 32px; stroke: var(--muted); fill: none; stroke-width: 1.5; }
+  .product-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .product-name { font-size: 14px; font-weight: 600; line-height: 1.3; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .product-code { font-size: 11px; color: var(--muted); font-family: monospace; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .product-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .product-tag { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: var(--tag-bg); color: var(--tag-text); }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state svg { width: 48px; height: 48px; stroke: var(--muted); fill: none; stroke-width: 1.2; margin: 0 auto 14px; display: block; opacity: 0.5; }
+  .empty-state p { font-size: 15px; }
+
+  /* Scanner page */
+  #page-scan { display: none; flex-direction: column; align-items: center; }
+  #page-scan.active { display: flex; }
+  #scanner-container { width: 100%; max-width: 480px; position: relative; }
+  #reader { width: 100%; border-radius: 0; }
+  #reader video { border-radius: 0 !important; }
+  .scanner-overlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .scan-frame {
+    width: 240px; height: 240px; position: relative;
+  }
+  .scan-corner {
+    position: absolute; width: 28px; height: 28px;
+    border-color: var(--accent); border-style: solid;
+  }
+  .scan-corner.tl { top: 0; left: 0; border-width: 3px 0 0 3px; border-radius: 3px 0 0 0; }
+  .scan-corner.tr { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 3px 0 0; }
+  .scan-corner.bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-radius: 0 0 0 3px; }
+  .scan-corner.br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 3px 0; }
+  .scan-line {
+    position: absolute; left: 8px; right: 8px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanline 2s ease-in-out infinite;
+    top: 10%;
+  }
+  @keyframes scanline { 0%,100% { top: 10%; opacity: 0.8; } 50% { top: 85%; opacity: 1; } }
+  .scanner-info {
+    text-align: center; padding: 20px 20px 0;
+    max-width: 480px; width: 100%;
+  }
+  .scanner-info p { color: var(--muted); font-size: 14px; }
+  .scanner-result {
+    margin: 16px 20px; padding: 14px 18px;
+    background: var(--surface); border: 1px solid var(--success);
+    border-radius: var(--radius); max-width: 480px; width: calc(100% - 40px);
+  }
+  .scanner-result h3 { font-size: 14px; color: var(--success); margin-bottom: 6px; }
+  .scanner-result p { font-size: 13px; color: var(--muted); word-break: break-all; font-family: monospace; }
+  .scan-actions { display: flex; gap: 10px; margin-top: 12px; }
+
+  /* Buttons */
+  .btn {
+    padding: 11px 20px; border-radius: var(--radius-sm); border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #6a9ef8; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 0.5px solid var(--border2); }
+  .btn-danger { background: rgba(247,85,79,0.15); color: var(--danger); border: 0.5px solid rgba(247,85,79,0.3); }
+  .btn-full { width: 100%; }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px); z-index: 200; display: none;
+    align-items: flex-end; justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 540px; max-height: 92dvh;
+    overflow-y: auto; padding: 0 0 max(20px, env(safe-area-inset-bottom));
+    animation: slideup 0.25s ease;
+  }
+  @keyframes slideup { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .modal-handle { width: 36px; height: 4px; background: var(--border2); border-radius: 2px; margin: 12px auto 20px; }
+  .modal-body { padding: 0 20px; }
+  .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+
+  /* Form */
+  .form-group { margin-bottom: 16px; }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .form-input {
+    width: 100%; padding: 11px 14px; background: var(--surface2);
+    border: 0.5px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-size: 15px; outline: none; transition: border-color 0.2s;
+    font-family: var(--font);
+  }
+  .form-input:focus { border-color: var(--accent); }
+  .form-input::placeholder { color: var(--muted); }
+  textarea.form-input { resize: vertical; min-height: 80px; }
+
+  .tags-input-wrap { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: var(--surface2); border: 0.5px solid var(--border); border-radius: var(--radius-sm); min-height: 44px; cursor: text; }
+  .tags-input-wrap:focus-within { border-color: var(--accent); }
+  .tag-pill { display: flex; align-items: center; gap: 5px; padding: 3px 10px; background: var(--tag-bg); color: var(--tag-text); border-radius: 20px; font-size: 12px; }
+  .tag-pill-x { cursor: pointer; opacity: 0.7; font-size: 14px; line-height: 1; }
+  .tag-pill-x:hover { opacity: 1; }
+  .tags-input-field { flex: 1; min-width: 80px; background: none; border: none; color: var(--text); font-size: 14px; outline: none; padding: 2px 0; }
+
+  .code-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--surface2); border-radius: var(--radius-sm); font-family: monospace; font-size: 13px; color: var(--muted); margin-bottom: 16px; word-break: break-all; }
+  .code-type { font-size: 10px; padding: 2px 6px; background: rgba(79,142,247,0.15); color: var(--accent); border-radius: 4px; font-family: var(--font); }
+  .price-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .price-field { position: relative; }
+  .price-field .currency { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; color: var(--muted); pointer-events: none; }
+  .price-field .form-input { padding-left: 26px; }
+  .price-badge { display: inline-flex; flex-direction: column; align-items: center; padding: 10px 16px; border-radius: var(--radius-sm); min-width: 0; flex: 1; }
+  .price-badge-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .price-badge-value { font-size: 20px; font-weight: 700; }
+  .price-retail { background: rgba(46,204,135,0.1); }
+  .price-retail .price-badge-value { color: var(--success); }
+  .price-wholesale { background: rgba(79,142,247,0.1); }
+  .price-wholesale .price-badge-value { color: var(--accent); }
+  .price-margin { background: rgba(255,165,0,0.1); }
+  .price-margin .price-badge-value { color: #f0a030; }
+  .prices-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .product-price { font-size: 12px; font-weight: 600; color: var(--success); margin-top: 4px; }
+
+  /* Detail modal */
+  .detail-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: var(--surface2); display: flex; align-items: center; justify-content: center; }
+  .detail-img svg { width: 48px; height: 48px; stroke: var(--muted); fill: none; stroke-width: 1.2; }
+  .detail-info { padding: 20px 20px 0; }
+  .detail-name { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .detail-desc { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 14px; }
+  .detail-meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .detail-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .detail-tag { padding: 4px 12px; background: var(--tag-bg); color: var(--tag-text); border-radius: 20px; font-size: 12px; }
+  .detail-actions { display: flex; gap: 10px; margin-top: 18px; }
+
+  /* History page */
+  .scan-history-list { padding: 0 16px; }
+  .history-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 0; border-bottom: 0.5px solid var(--border);
+  }
+  .history-icon { width: 42px; height: 42px; border-radius: 10px; background: var(--surface2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .history-icon svg { width: 18px; height: 18px; stroke: var(--muted); fill: none; stroke-width: 2; }
+  .history-code { font-family: monospace; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-type { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .history-time { font-size: 11px; color: var(--muted); margin-left: auto; flex-shrink: 0; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface2); border: 0.5px solid var(--border2);
+    padding: 10px 20px; border-radius: 30px; font-size: 14px;
+    opacity: 0; transition: all 0.3s; z-index: 999; white-space: nowrap;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--success); color: var(--success); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* Misc */
+  .section-count { font-size: 13px; color: var(--muted); padding: 0 20px 10px; }
+  #html5-qrcode-button-camera-stop, #html5-qrcode-button-camera-start { display: none !important; }
+  #reader__dashboard_section_swaplink { display: none !important; }
+  #html5-qrcode-anchor-scan-type-change { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Pages -->
+<div id="page-home" class="page active">
+  <div class="page-header">
+    <div class="page-title">ScanVault</div>
+    <div class="page-sub" id="home-count">0 products saved</div>
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="search-input" id="search-input" type="search" placeholder="Search products, codes, tags…" />
+    </div>
+  </div>
+  <div class="tags-scroll" id="tags-filter-bar">
+    <div class="tag-chip active" data-tag="all">All</div>
+  </div>
+  <div class="section-count" id="results-count"></div>
+  <div class="products-grid" id="products-grid"></div>
+  <div class="empty-state" id="empty-state" style="display:none">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    <p>No products yet.<br>Tap <strong>Scan</strong> to add your first.</p>
+  </div>
+</div>
+
+<div id="page-scan" class="page">
+  <div class="page-header" style="width:100%;max-width:480px;align-self:flex-start">
+    <div class="page-title">Scan</div>
+    <div class="page-sub">Point camera at QR code or barcode</div>
+  </div>
+  <div id="scanner-container">
+    <div id="reader"></div>
+    <div class="scanner-overlay">
+      <div class="scan-frame">
+        <div class="scan-corner tl"></div>
+        <div class="scan-corner tr"></div>
+        <div class="scan-corner bl"></div>
+        <div class="scan-corner br"></div>
+        <div class="scan-line"></div>
+      </div>
+    </div>
+  </div>
+  <div class="scanner-info">
+    <p id="scan-status">Initializing camera…</p>
+  </div>
+  <div id="scan-result-box" class="scanner-result" style="display:none">
+    <h3>✓ Code detected</h3>
+    <p id="scan-result-code"></p>
+    <p id="scan-result-type" style="font-size:11px;margin-top:4px;"></p>
+    <div class="scan-actions">
+      <button class="btn btn-primary" onclick="openSaveModal()">Save Product</button>
+      <button class="btn btn-secondary" onclick="resetScan()">Scan Again</button>
+    </div>
+  </div>
+</div>
+
+<div id="page-history" class="page">
+  <div class="page-header">
+    <div class="page-title">History</div>
+    <div class="page-sub">Recent scans</div>
+  </div>
+  <div class="scan-history-list" id="history-list"></div>
+  <div class="empty-state" id="history-empty" style="display:none">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <p>No scan history yet.</p>
+  </div>
+</div>
+
+<!-- Save Product Modal -->
+<div class="modal-backdrop" id="save-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-body">
+      <div class="modal-title">Save Product</div>
+      <div class="code-badge">
+        <span id="modal-code-display"></span>
+        <span class="code-type" id="modal-code-type"></span>
+      </div>
+      <div class="form-group">
+        <label>Product Name *</label>
+        <input class="form-input" id="product-name" type="text" placeholder="e.g. Coca-Cola 330ml" />
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea class="form-input" id="product-desc" placeholder="Brand, category, notes…"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Tags <span style="color:var(--muted);font-size:11px">(press Enter or comma)</span></label>
+        <div class="tags-input-wrap" id="tags-input-wrap" onclick="document.getElementById('tag-input-field').focus()">
+          <input class="tags-input-field" id="tag-input-field" type="text" placeholder="Add tag…" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Pricing</label>
+        <div class="price-row">
+          <div class="price-field">
+            <span class="currency">$</span>
+            <input class="form-input" id="product-retail" type="number" min="0" step="0.01" placeholder="Retail price" />
+          </div>
+          <div class="price-field">
+            <span class="currency">$</span>
+            <input class="form-input" id="product-wholesale" type="number" min="0" step="0.01" placeholder="Wholesale price" />
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <span style="font-size:11px;color:var(--muted);">Retail</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:auto;margin-right:4px;">Wholesale</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Photo (optional)</label>
+        <input class="form-input" id="product-photo" type="file" accept="image/*" capture="environment" style="padding:8px;" />
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px;padding-bottom:4px;">
+        <button class="btn btn-primary btn-full" onclick="saveProduct()">Save Product</button>
+        <button class="btn btn-secondary" onclick="closeModal('save-modal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Product Detail Modal -->
+<div class="modal-backdrop" id="detail-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div id="detail-img-wrap" class="detail-img">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    </div>
+    <div class="detail-info">
+      <div class="detail-name" id="detail-name"></div>
+      <div class="code-badge" id="detail-code"></div>
+      <div class="prices-row" id="detail-prices"></div>
+      <div class="detail-tags" id="detail-tags"></div>
+      <div class="detail-desc" id="detail-desc"></div>
+      <div class="detail-meta" id="detail-meta"></div>
+      <div class="detail-actions">
+        <button class="btn btn-primary btn-full" id="edit-btn" onclick="openEditModal()">Edit</button>
+        <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
+        <button class="btn btn-danger" id="delete-btn">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Register / Edit Modal -->
+<div class="modal-backdrop" id="register-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-body">
+      <div class="modal-title" id="register-modal-title">New Product</div>
+
+      <div class="form-group">
+        <label>Product Name *</label>
+        <input class="form-input" id="reg-name" type="text" placeholder="e.g. Wireless Headphones" />
+      </div>
+
+      <div class="form-group">
+        <label>Barcode / QR Code</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input class="form-input" id="reg-code" type="text" placeholder="Enter or scan code" style="flex:1;" />
+          <button class="btn btn-secondary" style="flex-shrink:0;white-space:nowrap;" onclick="startInlineScanner()">Scan</button>
+        </div>
+        <div id="inline-scanner-wrap" style="display:none;margin-top:10px;border-radius:var(--radius-sm);overflow:hidden;position:relative;">
+          <div id="inline-reader" style="width:100%;"></div>
+          <div style="position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;">
+            <div style="width:160px;height:160px;position:relative;">
+              <div style="position:absolute;top:0;left:0;width:22px;height:22px;border-top:3px solid var(--accent);border-left:3px solid var(--accent);border-radius:3px 0 0 0;"></div>
+              <div style="position:absolute;top:0;right:0;width:22px;height:22px;border-top:3px solid var(--accent);border-right:3px solid var(--accent);border-radius:0 3px 0 0;"></div>
+              <div style="position:absolute;bottom:0;left:0;width:22px;height:22px;border-bottom:3px solid var(--accent);border-left:3px solid var(--accent);border-radius:0 0 0 3px;"></div>
+              <div style="position:absolute;bottom:0;right:0;width:22px;height:22px;border-bottom:3px solid var(--accent);border-right:3px solid var(--accent);border-radius:0 0 3px 0;"></div>
+            </div>
+          </div>
+          <button class="btn btn-secondary" style="width:100%;margin-top:6px;border-radius:0;" onclick="stopInlineScanner()">Cancel scan</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Category</label>
+        <select class="form-input" id="reg-category">
+          <option value="">— Select category —</option>
+          <option>Electronics</option>
+          <option>Food & Beverage</option>
+          <option>Clothing & Apparel</option>
+          <option>Health & Beauty</option>
+          <option>Home & Garden</option>
+          <option>Sports & Outdoors</option>
+          <option>Toys & Games</option>
+          <option>Books & Media</option>
+          <option>Automotive</option>
+          <option>Office Supplies</option>
+          <option>Other</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Brand</label>
+        <input class="form-input" id="reg-brand" type="text" placeholder="e.g. Samsung, Nike…" />
+      </div>
+
+      <div class="form-group">
+        <label>SKU / Reference</label>
+        <input class="form-input" id="reg-sku" type="text" placeholder="Internal reference code" />
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea class="form-input" id="reg-desc" placeholder="Product details, notes…"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Pricing</label>
+        <div class="price-row">
+          <div class="price-field">
+            <span class="currency">$</span>
+            <input class="form-input" id="reg-retail" type="number" min="0" step="0.01" placeholder="Retail" />
+          </div>
+          <div class="price-field">
+            <span class="currency">$</span>
+            <input class="form-input" id="reg-wholesale" type="number" min="0" step="0.01" placeholder="Wholesale" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Stock Quantity</label>
+        <input class="form-input" id="reg-stock" type="number" min="0" step="1" placeholder="Units in stock" />
+      </div>
+
+      <div class="form-group">
+        <label>Tags <span style="color:var(--muted);font-size:11px">(Enter or comma)</span></label>
+        <div class="tags-input-wrap" id="reg-tags-wrap" onclick="document.getElementById('reg-tag-field').focus()">
+          <input class="tags-input-field" id="reg-tag-field" type="text" placeholder="Add tag…" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Photo</label>
+        <input class="form-input" id="reg-photo" type="file" accept="image/*" capture="environment" style="padding:8px;" />
+      </div>
+
+      <div id="reg-photo-preview" style="display:none;margin-bottom:14px;">
+        <img id="reg-photo-img" style="width:100%;border-radius:var(--radius-sm);max-height:160px;object-fit:cover;" />
+        <button class="btn btn-danger" style="width:100%;margin-top:6px;" onclick="clearRegPhoto()">Remove photo</button>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:4px;padding-bottom:4px;">
+        <button class="btn btn-primary btn-full" id="reg-submit-btn" onclick="submitRegister()">Register Product</button>
+        <button class="btn btn-secondary" onclick="closeRegisterModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<nav>
+  <button class="nav-btn active" id="nav-home" onclick="showPage('home')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    Products
+  </button>
+  <button class="nav-scan-btn" id="nav-scan" onclick="showPage('scan')">
+    <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10"/></svg>
+  </button>
+  <button class="nav-btn" id="nav-register" onclick="openRegisterModal()">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    Register
+  </button>
+  <button class="nav-btn" id="nav-history" onclick="showPage('history')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    History
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let products = JSON.parse(localStorage.getItem('sv_products') || '[]');
+let scanHistory = JSON.parse(localStorage.getItem('sv_history') || '[]');
+let currentScan = null;
+let currentTags = [];
+let filterTag = 'all';
+let searchQuery = '';
+let scanner = null;
+let scannerStarted = false;
+let currentDetailId = null;
+
+// ── Persist ────────────────────────────────────────────────────────────────
+function save() {
+  localStorage.setItem('sv_products', JSON.stringify(products));
+  localStorage.setItem('sv_history', JSON.stringify(scanHistory));
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  setTimeout(() => { t.className = 'toast'; }, 2600);
+}
+
+// ── Pages ──────────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const navBtn = document.getElementById('nav-' + name);
+  if (navBtn) navBtn.classList.add('active');
+
+  if (name === 'scan') startScanner();
+  else stopScanner();
+
+  if (name === 'home') renderProducts();
+  if (name === 'history') renderHistory();
+}
+
+// ── Scanner ────────────────────────────────────────────────────────────────
+function startScanner() {
+  if (scannerStarted) return;
+  const statusEl = document.getElementById('scan-status');
+  statusEl.innerHTML = 'Starting camera…';
+  document.getElementById('scan-result-box').style.display = 'none';
+
+  // Destroy any stale instance and reset the DOM element
+  if (scanner) { try { scanner.clear(); } catch(_){} scanner = null; }
+  document.getElementById('reader').innerHTML = '';
+
+  scanner = new Html5Qrcode('reader');
+
+  // Use facingMode directly — avoids the getCameras() permission race that
+  // breaks on iOS Safari and many Android browsers when the page is not HTTPS.
+  scanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
+    onScanSuccess,
+    () => {}
+  ).then(() => {
+    scannerStarted = true;
+    statusEl.innerHTML = 'Align code within the frame';
+  }).catch(err => {
+    const s = String(err).toLowerCase();
+    let msg = '⚠️ Camera error. Please try again.';
+    if (s.includes('notallowed') || s.includes('permission') || s.includes('denied')) {
+      msg = '🔒 Camera permission denied.<br><small>Go to your browser settings → allow camera for this site, then tap Retry.</small>';
+    } else if (s.includes('notfound') || s.includes('devicenotfound') || s.includes('no camera')) {
+      msg = '📷 No camera found on this device.';
+    } else if (s.includes('https') || s.includes('secure') || s.includes('insecure')) {
+      msg = '🔒 Camera requires a secure HTTPS connection.';
+    }
+    statusEl.innerHTML = msg + '<br><button class="btn btn-secondary" style="margin-top:12px;font-size:13px;" onclick="retryScan()">↺ Retry</button>';
+    try { scanner.clear(); } catch(_){} scanner = null;
+  });
+}
+
+function retryScan() {
+  scannerStarted = false;
+  scanner = null;
+  startScanner();
+}
+
+function stopScanner() {
+  if (scanner && scannerStarted) {
+    scanner.stop()
+      .then(() => { try { scanner.clear(); } catch(_){} scanner = null; })
+      .catch(() => { try { scanner.clear(); } catch(_){} scanner = null; });
+    scannerStarted = false;
+  }
+}
+
+function onScanSuccess(code, result) {
+  if (currentScan === code) return;
+  currentScan = code;
+  const type = result.result?.format?.formatName || 'Unknown';
+  document.getElementById('scan-result-code').textContent = code;
+  document.getElementById('scan-result-type').textContent = 'Type: ' + type;
+  document.getElementById('scan-result-box').style.display = 'block';
+  document.getElementById('scan-status').textContent = 'Code detected!';
+
+  // Add to history
+  scanHistory.unshift({ code, type, time: Date.now() });
+  if (scanHistory.length > 100) scanHistory.pop();
+  save();
+
+  // Vibrate
+  if (navigator.vibrate) navigator.vibrate(80);
+}
+
+function resetScan() {
+  currentScan = null;
+  document.getElementById('scan-result-box').style.display = 'none';
+  document.getElementById('scan-status').textContent = 'Align code within the frame';
+}
+
+// ── Save Modal ─────────────────────────────────────────────────────────────
+function openSaveModal() {
+  if (!currentScan) return;
+  const type = document.getElementById('scan-result-type').textContent.replace('Type: ', '');
+  document.getElementById('modal-code-display').textContent = currentScan;
+  document.getElementById('modal-code-type').textContent = type;
+  document.getElementById('product-name').value = '';
+  document.getElementById('product-desc').value = '';
+  document.getElementById('product-photo').value = '';
+  document.getElementById('product-retail').value = '';
+  document.getElementById('product-wholesale').value = '';
+  currentTags = [];
+  renderTagPills();
+  document.getElementById('save-modal').classList.add('open');
+  setTimeout(() => document.getElementById('product-name').focus(), 300);
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Tag input
+document.getElementById('tag-input-field').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addTag(this.value.trim().replace(',', ''));
+  } else if (e.key === 'Backspace' && this.value === '' && currentTags.length) {
+    currentTags.pop();
+    renderTagPills();
+  }
+});
+document.getElementById('tag-input-field').addEventListener('blur', function() {
+  if (this.value.trim()) addTag(this.value.trim());
+});
+
+function addTag(val) {
+  val = val.toLowerCase().replace(/[^a-z0-9\-_]/g, '');
+  if (val && !currentTags.includes(val)) {
+    currentTags.push(val);
+    renderTagPills();
+  }
+  document.getElementById('tag-input-field').value = '';
+}
+
+function removeTag(tag) {
+  currentTags = currentTags.filter(t => t !== tag);
+  renderTagPills();
+}
+
+function renderTagPills() {
+  const wrap = document.getElementById('tags-input-wrap');
+  const inp = document.getElementById('tag-input-field');
+  wrap.innerHTML = '';
+  currentTags.forEach(tag => {
+    const pill = document.createElement('div');
+    pill.className = 'tag-pill';
+    pill.innerHTML = `${tag}<span class="tag-pill-x" onclick="removeTag('${tag}')">×</span>`;
+    wrap.appendChild(pill);
+  });
+  wrap.appendChild(inp);
+}
+
+async function saveProduct() {
+  const name = document.getElementById('product-name').value.trim();
+  if (!name) { showToast('Product name required', 'error'); return; }
+  const desc = document.getElementById('product-desc').value.trim();
+  const photoFile = document.getElementById('product-photo').files[0];
+  let photoData = null;
+
+  if (photoFile) {
+    photoData = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.readAsDataURL(photoFile);
+    });
+  }
+
+  const retail = parseFloat(document.getElementById('product-retail').value) || null;
+  const wholesale = parseFloat(document.getElementById('product-wholesale').value) || null;
+
+  const product = {
+    id: Date.now().toString(),
+    code: currentScan,
+    type: document.getElementById('modal-code-type').textContent,
+    name,
+    desc,
+    tags: [...currentTags],
+    retail,
+    wholesale,
+    photo: photoData,
+    savedAt: Date.now()
+  };
+  products.unshift(product);
+  save();
+  closeModal('save-modal');
+  showToast('Product saved!', 'success');
+  resetScan();
+}
+
+// ── Products ───────────────────────────────────────────────────────────────
+function getAllTags() {
+  const set = new Set();
+  products.forEach(p => p.tags.forEach(t => set.add(t)));
+  return [...set].sort();
+}
+
+function renderTagFilterBar() {
+  const bar = document.getElementById('tags-filter-bar');
+  const tags = getAllTags();
+  bar.innerHTML = `<div class="tag-chip ${filterTag === 'all' ? 'active' : ''}" data-tag="all" onclick="setFilter('all')">All</div>`;
+  tags.forEach(tag => {
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip' + (filterTag === tag ? ' active' : '');
+    chip.dataset.tag = tag;
+    chip.textContent = tag;
+    chip.onclick = () => setFilter(tag);
+    bar.appendChild(chip);
+  });
+}
+
+function setFilter(tag) {
+  filterTag = tag;
+  renderProducts();
+}
+
+function renderProducts() {
+  const q = searchQuery.toLowerCase();
+  let filtered = products.filter(p => {
+    const matchTag = filterTag === 'all' || p.tags.includes(filterTag);
+    const matchSearch = !q || p.name.toLowerCase().includes(q) || (p.desc || '').toLowerCase().includes(q) || p.code.toLowerCase().includes(q) || p.tags.some(t => t.includes(q));
+    return matchTag && matchSearch;
+  });
+
+  renderTagFilterBar();
+  document.getElementById('home-count').textContent = products.length + ' product' + (products.length !== 1 ? 's' : '') + ' saved';
+  document.getElementById('results-count').textContent = filtered.length !== products.length ? `${filtered.length} of ${products.length} products` : '';
+
+  const grid = document.getElementById('products-grid');
+  const empty = document.getElementById('empty-state');
+  if (!filtered.length) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').innerHTML = products.length ? 'No products match your search.' : 'No products yet.<br>Tap <strong>Scan</strong> to add your first.';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.innerHTML = filtered.map(p => `
+    <div class="product-card" onclick="openDetail('${p.id}')">
+      <div class="product-thumb">
+        ${p.photo ? `<img src="${p.photo}" alt="${p.name}" />` : `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`}
+      </div>
+      <div class="product-name">${escHtml(p.name)}</div>
+      <div class="product-code">${p.brand ? escHtml(p.brand) + ' · ' : ''}${escHtml(p.code)}</div>
+      ${p.retail != null || p.wholesale != null ? `<div class="product-price">${p.retail != null ? '$'+p.retail.toFixed(2) : '—'} <span style="color:var(--muted);font-weight:400">/ ${p.wholesale != null ? '$'+p.wholesale.toFixed(2) : '—'}</span></div>` : ''}
+      ${p.stock != null ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">Stock: ${p.stock}</div>` : ''}
+      <div class="product-tags">${p.tags.map(t => `<span class="product-tag">${t}</span>`).join('')}</div>
+    </div>
+  `).join('');
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Detail ─────────────────────────────────────────────────────────────────
+function openDetail(id) {
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  currentDetailId = id;
+  document.getElementById('detail-name').textContent = p.name;
+  document.getElementById('detail-code').innerHTML = `${escHtml(p.code)} <span class="code-type">${escHtml(p.type)}</span>`;
+
+  // Prices
+  const pricesRow = document.getElementById('detail-prices');
+  const hasRetail = p.retail != null;
+  const hasWholesale = p.wholesale != null;
+  if (hasRetail || hasWholesale) {
+    let html = '';
+    if (hasRetail) html += `<div class="price-badge price-retail"><span class="price-badge-label">Retail</span><span class="price-badge-value">$${p.retail.toFixed(2)}</span></div>`;
+    if (hasWholesale) html += `<div class="price-badge price-wholesale"><span class="price-badge-label">Wholesale</span><span class="price-badge-value">$${p.wholesale.toFixed(2)}</span></div>`;
+    if (hasRetail && hasWholesale) {
+      const margin = ((p.retail - p.wholesale) / p.retail * 100).toFixed(1);
+      html += `<div class="price-badge price-margin"><span class="price-badge-label">Margin</span><span class="price-badge-value">${margin}%</span></div>`;
+    }
+    pricesRow.innerHTML = html;
+    pricesRow.style.display = 'flex';
+  } else {
+    pricesRow.style.display = 'none';
+  }
+  document.getElementById('detail-desc').textContent = p.desc || 'No description.';
+  document.getElementById('detail-tags').innerHTML = p.tags.map(t => `<span class="detail-tag">${t}</span>`).join('') || '<span style="color:var(--muted);font-size:13px">No tags</span>';
+  document.getElementById('detail-meta').textContent = 'Saved ' + new Date(p.savedAt).toLocaleString();
+
+  const imgWrap = document.getElementById('detail-img-wrap');
+  imgWrap.innerHTML = p.photo
+    ? `<img src="${p.photo}" alt="${escHtml(p.name)}" style="width:100%;aspect-ratio:16/9;object-fit:cover;" />`
+    : `<svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:var(--muted);fill:none;stroke-width:1.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+
+  document.getElementById('delete-btn').onclick = () => deleteProduct(id);
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+function deleteProduct(id) {
+  if (!confirm('Delete this product?')) return;
+  products = products.filter(p => p.id !== id);
+  save();
+  closeModal('detail-modal');
+  renderProducts();
+  showToast('Product deleted');
+}
+
+// ── History ────────────────────────────────────────────────────────────────
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('history-empty');
+  if (!scanHistory.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  list.innerHTML = scanHistory.map(h => `
+    <div class="history-item">
+      <div class="history-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </div>
+      <div style="min-width:0;flex:1">
+        <div class="history-code">${escHtml(h.code)}</div>
+        <div class="history-type">${escHtml(h.type || 'Unknown')}</div>
+      </div>
+      <div class="history-time">${timeAgo(h.time)}</div>
+    </div>
+  `).join('');
+}
+
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────
+document.getElementById('search-input').addEventListener('input', function() {
+  searchQuery = this.value;
+  renderProducts();
+});
+
+// ── Register / Edit ────────────────────────────────────────────────────────
+let regTags = [];
+let regEditId = null;
+let inlineScanner = null;
+let inlineScannerStarted = false;
+
+function openRegisterModal(prefillCode) {
+  regEditId = null;
+  regTags = [];
+  document.getElementById('register-modal-title').textContent = 'New Product';
+  document.getElementById('reg-submit-btn').textContent = 'Register Product';
+  document.getElementById('reg-name').value = '';
+  document.getElementById('reg-code').value = prefillCode || '';
+  document.getElementById('reg-category').value = '';
+  document.getElementById('reg-brand').value = '';
+  document.getElementById('reg-sku').value = '';
+  document.getElementById('reg-desc').value = '';
+  document.getElementById('reg-retail').value = '';
+  document.getElementById('reg-wholesale').value = '';
+  document.getElementById('reg-stock').value = '';
+  document.getElementById('reg-photo').value = '';
+  document.getElementById('reg-photo-preview').style.display = 'none';
+  renderRegTags();
+  stopInlineScanner();
+  document.getElementById('register-modal').classList.add('open');
+  setTimeout(() => document.getElementById('reg-name').focus(), 320);
+}
+
+function openEditModal() {
+  const p = products.find(x => x.id === currentDetailId);
+  if (!p) return;
+  regEditId = p.id;
+  regTags = [...(p.tags || [])];
+  document.getElementById('register-modal-title').textContent = 'Edit Product';
+  document.getElementById('reg-submit-btn').textContent = 'Save Changes';
+  document.getElementById('reg-name').value = p.name || '';
+  document.getElementById('reg-code').value = p.code || '';
+  document.getElementById('reg-category').value = p.category || '';
+  document.getElementById('reg-brand').value = p.brand || '';
+  document.getElementById('reg-sku').value = p.sku || '';
+  document.getElementById('reg-desc').value = p.desc || '';
+  document.getElementById('reg-retail').value = p.retail != null ? p.retail : '';
+  document.getElementById('reg-wholesale').value = p.wholesale != null ? p.wholesale : '';
+  document.getElementById('reg-stock').value = p.stock != null ? p.stock : '';
+  document.getElementById('reg-photo').value = '';
+
+  if (p.photo) {
+    document.getElementById('reg-photo-img').src = p.photo;
+    document.getElementById('reg-photo-preview').style.display = 'block';
+  } else {
+    document.getElementById('reg-photo-preview').style.display = 'none';
+  }
+
+  renderRegTags();
+  stopInlineScanner();
+  closeModal('detail-modal');
+  document.getElementById('register-modal').classList.add('open');
+  setTimeout(() => document.getElementById('reg-name').focus(), 320);
+}
+
+function closeRegisterModal() {
+  stopInlineScanner();
+  document.getElementById('register-modal').classList.remove('open');
+}
+
+async function submitRegister() {
+  const name = document.getElementById('reg-name').value.trim();
+  if (!name) { showToast('Product name is required', 'error'); return; }
+
+  const photoFile = document.getElementById('reg-photo').files[0];
+  let photoData = null;
+
+  if (photoFile) {
+    photoData = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.readAsDataURL(photoFile);
+    });
+  }
+
+  const retail = parseFloat(document.getElementById('reg-retail').value) || null;
+  const wholesale = parseFloat(document.getElementById('reg-wholesale').value) || null;
+  const stockVal = document.getElementById('reg-stock').value;
+  const stock = stockVal !== '' ? parseInt(stockVal) : null;
+
+  if (regEditId) {
+    // Edit existing
+    const idx = products.findIndex(p => p.id === regEditId);
+    if (idx === -1) return;
+    const existing = products[idx];
+    products[idx] = {
+      ...existing,
+      name,
+      code: document.getElementById('reg-code').value.trim() || existing.code,
+      category: document.getElementById('reg-category').value,
+      brand: document.getElementById('reg-brand').value.trim(),
+      sku: document.getElementById('reg-sku').value.trim(),
+      desc: document.getElementById('reg-desc').value.trim(),
+      retail,
+      wholesale,
+      stock,
+      tags: [...regTags],
+      photo: photoData || existing.photo,
+      updatedAt: Date.now()
+    };
+    save();
+    closeRegisterModal();
+    renderProducts();
+    showToast('Product updated!', 'success');
+  } else {
+    // New product
+    const product = {
+      id: Date.now().toString(),
+      code: document.getElementById('reg-code').value.trim() || '—',
+      type: 'Manual',
+      name,
+      category: document.getElementById('reg-category').value,
+      brand: document.getElementById('reg-brand').value.trim(),
+      sku: document.getElementById('reg-sku').value.trim(),
+      desc: document.getElementById('reg-desc').value.trim(),
+      retail,
+      wholesale,
+      stock,
+      tags: [...regTags],
+      photo: photoData,
+      savedAt: Date.now()
+    };
+    products.unshift(product);
+    save();
+    closeRegisterModal();
+    renderProducts();
+    showToast('Product registered!', 'success');
+  }
+}
+
+function clearRegPhoto() {
+  document.getElementById('reg-photo').value = '';
+  document.getElementById('reg-photo-preview').style.display = 'none';
+  // clear from product on edit
+  if (regEditId) {
+    const idx = products.findIndex(p => p.id === regEditId);
+    if (idx !== -1) products[idx].photo = null;
+  }
+}
+
+// Register tag input
+document.getElementById('reg-tag-field').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addRegTag(this.value.trim().replace(',', ''));
+  } else if (e.key === 'Backspace' && this.value === '' && regTags.length) {
+    regTags.pop();
+    renderRegTags();
+  }
+});
+document.getElementById('reg-tag-field').addEventListener('blur', function() {
+  if (this.value.trim()) addRegTag(this.value.trim());
+});
+
+function addRegTag(val) {
+  val = val.toLowerCase().replace(/[^a-z0-9\-_]/g, '');
+  if (val && !regTags.includes(val)) { regTags.push(val); renderRegTags(); }
+  document.getElementById('reg-tag-field').value = '';
+}
+
+function removeRegTag(tag) {
+  regTags = regTags.filter(t => t !== tag);
+  renderRegTags();
+}
+
+function renderRegTags() {
+  const wrap = document.getElementById('reg-tags-wrap');
+  const inp = document.getElementById('reg-tag-field');
+  wrap.innerHTML = '';
+  regTags.forEach(tag => {
+    const pill = document.createElement('div');
+    pill.className = 'tag-pill';
+    pill.innerHTML = `${tag}<span class="tag-pill-x" onclick="removeRegTag('${tag}')">×</span>`;
+    wrap.appendChild(pill);
+  });
+  wrap.appendChild(inp);
+}
+
+// Photo preview in register form
+document.getElementById('reg-photo').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('reg-photo-img').src = e.target.result;
+    document.getElementById('reg-photo-preview').style.display = 'block';
+  };
+  r.readAsDataURL(file);
+});
+
+// Inline scanner in register modal
+function startInlineScanner() {
+  if (inlineScannerStarted) return;
+  document.getElementById('inline-scanner-wrap').style.display = 'block';
+
+  // Destroy any stale instance
+  if (inlineScanner) { try { inlineScanner.clear(); } catch(_){} inlineScanner = null; }
+  document.getElementById('inline-reader').innerHTML = '';
+
+  inlineScanner = new Html5Qrcode('inline-reader');
+  inlineScanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 160, height: 160 } },
+    (code) => {
+      document.getElementById('reg-code').value = code;
+      stopInlineScanner();
+      showToast('Code captured!', 'success');
+    },
+    () => {}
+  ).then(() => {
+    inlineScannerStarted = true;
+  }).catch(err => {
+    const s = String(err).toLowerCase();
+    const msg = (s.includes('notallowed') || s.includes('permission') || s.includes('denied'))
+      ? 'Camera permission denied. Allow access in browser settings.'
+      : 'Could not start camera. Please try again.';
+    showToast(msg, 'error');
+    document.getElementById('inline-scanner-wrap').style.display = 'none';
+    try { inlineScanner.clear(); } catch(_){} inlineScanner = null;
+  });
+}
+
+function stopInlineScanner() {
+  const wrap = document.getElementById('inline-scanner-wrap');
+  if (wrap) wrap.style.display = 'none';
+  if (inlineScanner && inlineScannerStarted) {
+    inlineScanner.stop()
+      .then(() => { try { inlineScanner.clear(); } catch(_){} inlineScanner = null; })
+      .catch(() => { try { inlineScanner.clear(); } catch(_){} inlineScanner = null; });
+    inlineScannerStarted = false;
+  }
+}
+
+// Update detail modal to show extra fields
+const _origOpenDetail = openDetail;
+openDetail = function(id) {
+  _origOpenDetail(id);
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  // Show extra fields in detail
+  let extraHtml = '';
+  if (p.brand) extraHtml += `<div style="font-size:13px;color:var(--muted);margin-bottom:4px;"><strong style="color:var(--text)">Brand:</strong> ${escHtml(p.brand)}</div>`;
+  if (p.category) extraHtml += `<div style="font-size:13px;color:var(--muted);margin-bottom:4px;"><strong style="color:var(--text)">Category:</strong> ${escHtml(p.category)}</div>`;
+  if (p.sku) extraHtml += `<div style="font-size:13px;color:var(--muted);margin-bottom:4px;"><strong style="color:var(--text)">SKU:</strong> <span style="font-family:monospace">${escHtml(p.sku)}</span></div>`;
+  if (p.stock != null) extraHtml += `<div style="font-size:13px;color:var(--muted);margin-bottom:4px;"><strong style="color:var(--text)">Stock:</strong> ${p.stock} units</div>`;
+  const meta = document.getElementById('detail-meta');
+  meta.innerHTML = (extraHtml ? `<div style="margin-bottom:8px;">${extraHtml}</div>` : '') +
+    `<span>Saved ${new Date(p.savedAt).toLocaleString()}</span>` +
+    (p.updatedAt ? ` · <span>Updated ${new Date(p.updatedAt).toLocaleString()}</span>` : '');
+};
+
+// Close register modal on backdrop
+document.getElementById('register-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('register-modal')) closeRegisterModal();
+});
+
+
+
+// Close modals on backdrop click
+document.querySelectorAll('.modal-backdrop').forEach(bd => {
+  bd.addEventListener('click', e => { if (e.target === bd) bd.classList.remove('open'); });
+});
+
+// Service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
